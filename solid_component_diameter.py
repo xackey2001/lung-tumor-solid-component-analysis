@@ -60,23 +60,12 @@ def central_60_percent_slices(seg_array: np.ndarray) -> np.ndarray:
     """
     Return tumor-containing axial slice indices restricted to the central 60%.
 
-    The first and last 20% of tumor-containing slices are excluded.
-    For very small tumors, at least one tumor-containing slice is retained.
+    Both bounds are rounded down, and the stop index is exclusive.
     """
     z_indices = np.unique(np.where(seg_array > 0)[0])
+    n = len(z_indices)
+    return z_indices[int(n * 0.2):int(n * 0.8)]
 
-    if len(z_indices) == 0:
-        return np.array([], dtype=int)
-
-    start = int(np.floor(len(z_indices) * 0.20))
-    stop = int(np.ceil(len(z_indices) * 0.80))
-
-    selected = z_indices[start:stop]
-
-    if len(selected) == 0:
-        selected = np.array([z_indices[len(z_indices) // 2]], dtype=int)
-
-    return selected
 
 
 def largest_connected_component(mask: np.ndarray) -> Optional[np.ndarray]:
@@ -145,8 +134,7 @@ def measure_max_2d_diameter(
 
     z_range = central_60_percent_slices(seg_array)
 
-    if len(z_range) == 0:
-        return float("nan"), None, None
+    has_candidate = False
 
     max_diameter = -np.inf
     max_slice = None
@@ -165,6 +153,7 @@ def measure_max_2d_diameter(
         if final_mask is None or np.count_nonzero(final_mask) == 0:
             continue
 
+        has_candidate = True
         try:
             diameter = pyradiomics_maximum_diameter(
                 image_slice=ct_slice,
@@ -176,9 +165,12 @@ def measure_max_2d_diameter(
             # PyRadiomics may fail for extremely small or degenerate components.
             continue
 
-        if diameter > max_diameter:
+        if np.isfinite(diameter) and diameter > max_diameter:
             max_diameter = diameter
             max_slice = int(z)
+
+    if not has_candidate:
+        return 0.0, None, None
 
     if max_slice is None:
         return float("nan"), None, None
